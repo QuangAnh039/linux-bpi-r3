@@ -3061,6 +3061,18 @@ static void spi_nor_debugfs_init(struct spi_nor *nor,
 					 info->id_len, info->id);
 }
 
+static int spi_nor_cal_read(void *priv, u32 *addr, int addrlen, u8 *buf, int readlen)
+{
+	struct spi_nor *nor = (struct spi_nor *)priv;
+
+	nor->reg_proto = SNOR_PROTO_1_1_1;
+	nor->read_proto = SNOR_PROTO_1_1_1;
+	nor->read_opcode = SPINOR_OP_READ;
+	nor->read_dummy = 0;
+
+	return nor->controller_ops->read(nor, *addr, readlen, buf);
+}
+
 static const struct flash_info *spi_nor_get_flash_info(struct spi_nor *nor,
 						       const char *name)
 {
@@ -3133,6 +3145,9 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 				      GFP_KERNEL);
 	if (!nor->bouncebuf)
 		return -ENOMEM;
+
+	if(nor->spimem)
+		spi_mem_do_calibration(nor->spimem, spi_nor_cal_read, nor);
 
 	info = spi_nor_get_flash_info(nor, name);
 	if (IS_ERR(info))
