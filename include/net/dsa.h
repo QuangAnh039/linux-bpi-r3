@@ -86,6 +86,8 @@ struct dsa_device_ops {
 	struct sk_buff *(*rcv)(struct sk_buff *skb, struct net_device *dev);
 	void (*flow_dissect)(const struct sk_buff *skb, __be16 *proto,
 			     int *offset);
+	int (*connect)(struct dsa_switch *ds);
+	void (*disconnect)(struct dsa_switch *ds);
 	unsigned int needed_headroom;
 	unsigned int needed_tailroom;
 	const char *name;
@@ -289,6 +291,10 @@ struct dsa_port {
 	struct list_head	mdbs;
 
 	bool setup;
+	/* Master state bits, valid only on CPU ports */
+	u8			master_admin_up:1;
+	u8			master_oper_up:1;
+
 };
 
 /* TODO: ideally DSA ports would have a single dp->link_dp member,
@@ -328,6 +334,8 @@ struct dsa_switch {
 	 * structure.
 	 */
 	void *priv;
+
+	void *tagger_data;
 
 	/*
 	 * Configuration data for this switch.
@@ -450,6 +458,12 @@ static inline bool dsa_port_is_user(struct dsa_port *dp)
 static inline bool dsa_port_is_unused(struct dsa_port *dp)
 {
 	return dp->type == DSA_PORT_TYPE_UNUSED;
+}
+
+static inline bool dsa_port_master_is_operational(struct dsa_port *dp)
+{
+	return dsa_port_is_cpu(dp) && dp->master_admin_up &&
+	       dp->master_oper_up;
 }
 
 static inline bool dsa_is_unused_port(struct dsa_switch *ds, int p)
@@ -612,6 +626,13 @@ struct dsa_switch_ops {
 						  enum dsa_tag_protocol mprot);
 	int	(*change_tag_protocol)(struct dsa_switch *ds, int port,
 				       enum dsa_tag_protocol proto);
+	/*
+	 * Method for switch drivers to connect to the tagging protocol driver
+	 * in current use. The switch driver can provide handlers for certain
+	 * types of packets for switch management.
+	 */
+	int	(*connect_tag_protocol)(struct dsa_switch *ds,
+					enum dsa_tag_protocol proto);
 
 	/* Optional switch-wide initialization and destruction methods */
 	int	(*setup)(struct dsa_switch *ds);
@@ -643,9 +664,14 @@ struct dsa_switch_ops {
 	/*
 	 * PHYLINK integration
 	 */
+	void	(*phylink_get_caps)(struct dsa_switch *ds, int port,
+				    struct phylink_config *config);
 	void	(*phylink_validate)(struct dsa_switch *ds, int port,
 				    unsigned long *supported,
 				    struct phylink_link_state *state);
+	struct phylink_pcs *(*phylink_mac_select_pcs)(struct dsa_switch *ds,
+						      int port,
+						      phy_interface_t iface);
 	int	(*phylink_mac_link_state)(struct dsa_switch *ds, int port,
 					  struct phylink_link_state *state);
 	void	(*phylink_mac_config)(struct dsa_switch *ds, int port,
@@ -941,6 +967,13 @@ struct dsa_switch_ops {
 	int	(*tag_8021q_vlan_add)(struct dsa_switch *ds, int port, u16 vid,
 				      u16 flags);
 	int	(*tag_8021q_vlan_del)(struct dsa_switch *ds, int port, u16 vid);
+
+	/*
+	 * DSA master tracking operations
+	 */
+	void	(*master_state_change)(struct dsa_switch *ds,
+				       const struct net_device *master,
+				       bool operational);
 };
 
 #define DSA_DEVLINK_PARAM_DRIVER(_id, _name, _type, _cmodes)		\

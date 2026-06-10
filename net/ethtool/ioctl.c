@@ -335,7 +335,7 @@ EXPORT_SYMBOL(ethtool_intersect_link_masks);
 void ethtool_convert_legacy_u32_to_link_mode(unsigned long *dst,
 					     u32 legacy_u32)
 {
-	bitmap_zero(dst, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	linkmode_zero(dst);
 	dst[0] = legacy_u32;
 }
 EXPORT_SYMBOL(ethtool_convert_legacy_u32_to_link_mode);
@@ -350,11 +350,10 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
 	if (__ETHTOOL_LINK_MODE_MASK_NBITS > 32) {
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(ext);
 
-		bitmap_zero(ext, __ETHTOOL_LINK_MODE_MASK_NBITS);
+		linkmode_zero(ext);
 		bitmap_fill(ext, 32);
 		bitmap_complement(ext, ext, __ETHTOOL_LINK_MODE_MASK_NBITS);
-		if (bitmap_intersects(ext, src,
-				      __ETHTOOL_LINK_MODE_MASK_NBITS)) {
+		if (linkmode_intersects(ext, src)) {
 			/* src mask goes beyond bit 31 */
 			retval = false;
 		}
@@ -563,6 +562,7 @@ static int ethtool_get_link_ksettings(struct net_device *dev,
 		= __ETHTOOL_LINK_MODE_MASK_NU32;
 	link_ksettings.base.master_slave_cfg = MASTER_SLAVE_CFG_UNSUPPORTED;
 	link_ksettings.base.master_slave_state = MASTER_SLAVE_STATE_UNSUPPORTED;
+	link_ksettings.base.rate_matching = RATE_MATCH_NONE;
 
 	return store_link_ksettings_for_user(useraddr, &link_ksettings);
 }
@@ -1956,6 +1956,13 @@ __printf(2, 3) void ethtool_sprintf(u8 **data, const char *fmt, ...)
 	*data += ETH_GSTRING_LEN;
 }
 EXPORT_SYMBOL(ethtool_sprintf);
+
+void ethtool_puts(u8 **data, const char *str)
+{
+	strscpy(*data, str, ETH_GSTRING_LEN);
+	*data += ETH_GSTRING_LEN;
+}
+EXPORT_SYMBOL(ethtool_puts);
 
 static int ethtool_phys_id(struct net_device *dev, void __user *useraddr)
 {
